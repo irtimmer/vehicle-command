@@ -64,11 +64,13 @@ func buildUserAgent(app string) string {
 // Account allows interaction with a Tesla account.
 type Account struct {
 	// The default UserAgent is constructed from the global UserAgent, but can be overridden.
-	UserAgent  string
-	authHeader string
-	Host       string
-	Subject    string
-	client     http.Client
+	UserAgent          string
+	authHeader         string
+	Host               string
+	Subject            string
+	client             http.Client
+	hermesUserToken    string
+	hermesVehicleToken string
 }
 
 // We don't parse JWTs beyond what's required to extract the API server domain name

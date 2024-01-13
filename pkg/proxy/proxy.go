@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	DefaultTimeout       = 10 * time.Second
+	DefaultTimeout       = 30 * time.Second
 	maxRequestBodyBytes  = 512
 	vinLength            = 17
 	proxyProtocolVersion = "tesla-http-proxy/1.1.0"
@@ -47,6 +47,14 @@ func getAccount(req *http.Request) (*account.Account, error) {
 	return account.New(token, proxyProtocolVersion)
 }
 
+func getOwnerAccount(req *http.Request) (*account.Account, error) {
+	token, ok := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer ")
+	if !ok {
+		return nil, fmt.Errorf("client did not provide an OAuth token")
+	}
+	return account.NewOwner(token, proxyProtocolVersion)
+}
+
 // Proxy exposes an HTTP API for sending vehicle commands.
 type Proxy struct {
 	Timeout time.Duration
@@ -56,6 +64,7 @@ type Proxy struct {
 	vinLock          sync.Map
 	unsupported      sync.Map
 	domainForSubject sync.Map
+	mode             string
 }
 
 func (p *Proxy) updateDomainForSubject(subject, domain string) {
@@ -112,11 +121,12 @@ func (p *Proxy) unlockVIN(vin string) {
 //
 // Vehicles must have the public part of skey enrolled on their keychains. (This is a
 // command-authentication key, not a TLS key.)
-func New(ctx context.Context, skey protocol.ECDHPrivateKey, cacheSize int) (*Proxy, error) {
+func New(ctx context.Context, skey protocol.ECDHPrivateKey, cacheSize int, mode string) (*Proxy, error) {
 	return &Proxy{
 		Timeout:    DefaultTimeout,
 		commandKey: skey,
 		sessions:   cache.New(cacheSize),
+		mode:       mode,
 	}, nil
 }
 
@@ -294,8 +304,15 @@ func (p *Proxy) forwardRequest(acct *account.Account, w http.ResponseWriter, req
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	log.Info("Received %s request for %s", req.Method, req.URL.Path)
+	var acct *account.Account
+	var err error
 
-	acct, err := getAccount(req)
+	if p.mode == "owner" {
+		acct, err = getOwnerAccount(req)
+	} else {
+		acct, err = getAccount(req)
+	}
+
 	if err != nil {
 		writeJSONError(w, http.StatusForbidden, err)
 		return
@@ -445,6 +462,14 @@ func (p *Proxy) loadVehicleAndCommandFromRequest(ctx context.Context, acct *acco
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err)
 		return nil, nil, err
+	}
+	if p.mode == "owner" {
+		car, err := acct.GetVehicleHermes(ctx, vin, p.commandKey, p.sessions)
+		if err != nil || car == nil {
+			writeJSONError(w, http.StatusInternalServerError, err)
+			return nil, nil, err
+		}
+		return car, commandToExecuteFunc, err
 	}
 
 	car, err := acct.GetVehicle(ctx, vin, p.commandKey, p.sessions)

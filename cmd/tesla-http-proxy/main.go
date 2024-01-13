@@ -42,6 +42,7 @@ type HttpProxyConfig struct {
 	host         string
 	port         int
 	timeout      time.Duration
+	mode         string
 }
 
 var (
@@ -55,6 +56,7 @@ func init() {
 	flag.StringVar(&httpConfig.host, "host", "localhost", "Proxy server `hostname`")
 	flag.IntVar(&httpConfig.port, "port", defaultPort, "`Port` to listen on")
 	flag.DurationVar(&httpConfig.timeout, "timeout", proxy.DefaultTimeout, "Timeout interval when sending commands")
+	flag.StringVar(&httpConfig.mode, "mode", "fleet", "Which mode to use, one of `fleet`, `owner`")
 }
 
 func Usage() {
@@ -116,7 +118,7 @@ func main() {
 	}
 
 	log.Debug("Creating proxy")
-	p, err := proxy.New(context.Background(), skey, cacheSize)
+	p, err := proxy.New(context.Background(), skey, cacheSize, httpConfig.mode)
 	if err != nil {
 		log.Error("Error initializing proxy service: %v", err)
 		return

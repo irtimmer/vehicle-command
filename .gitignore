@@ -11,3 +11,4 @@ examples/ble/ble
 *.DS_Store
 *.key
 config
+vendor

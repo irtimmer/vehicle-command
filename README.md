@@ -1,3 +1,34 @@
+# NOTES on this fork/branch
+This is a proof of concept on how to send signed commands to Tesla vehicles **without** registering for Fleet API access and having a public domain etc.
+
+It adds a new `-mode owner` switch to the tesla-http-proxy, and then forwards API requests to the Owner API, except for commands which are send via the Tesla Hermes backend with end-to-end command authentication.
+
+This is barely working right now. Use it at your own risk and have a debugger ready. I welcome Pull Requests.
+
+This could break at any second when Tesla changes it's APIs, rules or protocols. This is not endorsed or supported by Tesla.
+
+It is not meant to work around Fleet API restrictions, limits or costs!
+
+It is meant for community, self hosted use that avoids any third party having access to the vehicle. I will do my best to keep it working until there is a better or official way for that kind of use.
+
+Run the modified proxy:
+```
+# go run ./cmd/tesla-http-proxy -tls-key key.pem -cert cert.pem -port 4443 -key-file private-key.pem -mode owner -verbose
+```
+
+Get vehicle_data and send command:
+```
+# curl -k --header "Authorization: Bearer $OWNER_AUTH_TOKEN" "https://localhost:4443/api/1/vehicles/$VIN/vehicle_data" | jq .response.charge_state.charge_limit_soc
+86
+
+# curl -k --header 'Content-Type: application/json' --header "Authorization: Bearer $OWNER_AUTH_TOKEN" "https://localhost:4443/api/1/vehicles/$VIN/command/set_charge_limit" --data '{"percent": 87}'
+{"response":{"result":true,"reason":""}}
+
+# curl -k --header "Authorization: Bearer $OWNER_AUTH_TOKEN" "https://localhost:4443/api/1/vehicles/$VIN/vehicle_data" | jq .response.charge_state.charge_limit_soc
+87
+```
+
+
 # Tesla Vehicle Command SDK
 [![Go Reference](https://pkg.go.dev/badge/github.com/teslamotors/vehicle-command/pkg.svg)](https://pkg.go.dev/github.com/teslamotors/vehicle-command/pkg)
 [![Build and Test](https://github.com/teslamotors/vehicle-command/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/teslamotors/vehicle-command/actions/workflows/build.yml)
