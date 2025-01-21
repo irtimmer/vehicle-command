@@ -23,6 +23,8 @@ message VehicleAction {
     reserved 76;
     oneof vehicle_action_msg {
         GetVehicleData getVehicleData = 1;
+        CreateStreamSession createStreamSession = 3;
+        StreamMessage streamMessage = 4;
         ChargingSetLimitAction chargingSetLimitAction = 5;
         ChargingStartStopAction chargingStartStopAction = 6;
         DrivingClearSpeedLimitPinAction drivingClearSpeedLimitPinAction = 7;
@@ -93,6 +95,15 @@ message GetVehicleData {
     GetParentalControlsState getParentalControlsState = 19;
 }
 
+message CreateStreamSession {
+    string sessionId = 1;
+}
+
+message StreamMessage {
+    string sessionId = 1;
+    string data = 2;
+}
+
 message GetTirePressureState {
 }
 
@@ -138,6 +149,7 @@ message Response {
     oneof response_msg {
         VehicleData vehicleData = 2;
         Signatures.SessionInfo getSessionInfoResponse = 3;
+        StreamMessage streamMessage = 4;
         NearbyChargingSites getNearbyChargingSites = 5;
         Ping ping = 9;
     }
