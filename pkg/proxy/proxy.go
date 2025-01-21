@@ -57,7 +57,8 @@ func getOwnerAccount(req *http.Request) (*account.Account, error) {
 
 // Proxy exposes an HTTP API for sending vehicle commands.
 type Proxy struct {
-	Timeout time.Duration
+	Timeout  time.Duration
+	JwtToken string
 
 	commandKey       protocol.ECDHPrivateKey
 	sessions         *cache.SessionCache
@@ -308,7 +309,11 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var err error
 
 	if p.mode == "owner" {
-		acct, err = getOwnerAccount(req)
+		if p.JwtToken != "" {
+			acct, err = account.NewOwner(p.JwtToken, proxyProtocolVersion)
+		} else {
+			acct, err = getOwnerAccount(req)
+		}
 	} else {
 		acct, err = getAccount(req)
 	}

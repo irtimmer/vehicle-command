@@ -22,12 +22,13 @@ const (
 )
 
 const (
-	EnvTlsCert = "TESLA_HTTP_PROXY_TLS_CERT"
-	EnvTlsKey  = "TESLA_HTTP_PROXY_TLS_KEY"
-	EnvHost    = "TESLA_HTTP_PROXY_HOST"
-	EnvPort    = "TESLA_HTTP_PROXY_PORT"
-	EnvTimeout = "TESLA_HTTP_PROXY_TIMEOUT"
-	EnvVerbose = "TESLA_VERBOSE"
+	EnvTlsCert  = "TESLA_HTTP_PROXY_TLS_CERT"
+	EnvTlsKey   = "TESLA_HTTP_PROXY_TLS_KEY"
+	EnvHost     = "TESLA_HTTP_PROXY_HOST"
+	EnvPort     = "TESLA_HTTP_PROXY_PORT"
+	EnvTimeout  = "TESLA_HTTP_PROXY_TIMEOUT"
+	EnvJwtToken = "TESLA_HTTP_PROXY_JWT"
+	EnvVerbose  = "TESLA_VERBOSE"
 )
 
 const nonLocalhostWarning = `
@@ -43,6 +44,7 @@ type HttpProxyConfig struct {
 	port         int
 	timeout      time.Duration
 	mode         string
+	jwtToken     string
 }
 
 var (
@@ -57,6 +59,7 @@ func init() {
 	flag.IntVar(&httpConfig.port, "port", defaultPort, "`Port` to listen on")
 	flag.DurationVar(&httpConfig.timeout, "timeout", proxy.DefaultTimeout, "Timeout interval when sending commands")
 	flag.StringVar(&httpConfig.mode, "mode", "fleet", "Which mode to use, one of `fleet`, `owner`")
+	flag.StringVar(&httpConfig.jwtToken, "jwt", "", "JWT token for authentication")
 }
 
 func Usage() {
@@ -124,6 +127,7 @@ func main() {
 		return
 	}
 	p.Timeout = httpConfig.timeout
+	p.JwtToken = httpConfig.jwtToken
 	addr := fmt.Sprintf("%s:%d", httpConfig.host, httpConfig.port)
 	log.Info("Listening on %s", addr)
 
@@ -176,6 +180,10 @@ func readFromEnvironment() error {
 				return fmt.Errorf("invalid timeout: %s", timeoutEnv)
 			}
 		}
+	}
+
+	if httpConfig.jwtToken == "" {
+		httpConfig.jwtToken = os.Getenv(EnvJwtToken)
 	}
 
 	return nil
