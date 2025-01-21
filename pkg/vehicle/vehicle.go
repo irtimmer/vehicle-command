@@ -41,6 +41,9 @@ type sender interface {
 	// Stop the goroutine launched by Start.
 	Stop()
 
+	// Receive message from the vehicle from the specified domain using the provided authMethod.
+	Receive(ctx context.Context, domain universal.Domain, auth connector.AuthMethod) (protocol.Receiver, error)
+
 	// Send transmits message to the vehicle using the provided authMethod.
 	// If err is not nil, the caller must invoke recv.Close() after handling any responses.
 	// The client must call StartSessions before calling with auth set to authMethodMAC.
@@ -224,6 +227,10 @@ func (v *Vehicle) trySend(ctx context.Context, domain universal.Domain, payload 
 // (without modifying anti-replay counters, etc.) is safe and might resolve a transient error.
 func (v *Vehicle) SendMessage(ctx context.Context, message *universal.RoutableMessage) (protocol.Receiver, error) {
 	return v.dispatcher.Send(ctx, message, connector.AuthMethodNone)
+}
+
+func (v *Vehicle) Receive(ctx context.Context, domain universal.Domain, auth connector.AuthMethod) (protocol.Receiver, error) {
+	return v.dispatcher.Receive(ctx, domain, auth)
 }
 
 // Send a payload to a Vehicle. This is a low-level method that most clients will not need.

@@ -16,6 +16,40 @@ import (
 	universal "github.com/teslamotors/vehicle-command/pkg/protocol/protobuf/universalmessage"
 )
 
+func (v *Vehicle) WatchServerResponses(ctx context.Context) (chan carserver.Response, error) {
+	responses, err := v.Receive(ctx, universal.Domain_DOMAIN_INFOTAINMENT, v.authMethod)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(chan carserver.Response)
+	channel := responses.Recv()
+
+	go func() {
+		defer close(out)
+		for {
+			resp, ok := <-channel
+			if !ok {
+				break
+			}
+
+			responsePayload, err := resp.GetProtobufMessageAsBytes(), protocol.GetError(resp)
+			if err != nil {
+				return
+			}
+
+			var response carserver.Response
+			if err := proto.Unmarshal(responsePayload, &response); err != nil {
+				return
+			}
+
+			out <- response
+		}
+	}()
+
+	return out, nil
+}
+
 func (v *Vehicle) getCarServerResponse(ctx context.Context, action *carserver.Action_VehicleAction) (*carserver.Response, error) {
 	payload := carserver.Action{
 		ActionMsg: action,

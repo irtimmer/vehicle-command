@@ -37,6 +37,8 @@ type Dispatcher struct {
 
 	handlerLock sync.Mutex
 	handlers    map[receiverKey]*receiver
+
+	lastRequestId []byte
 }
 
 // New creates a Dispatcher from a Connector.
@@ -360,6 +362,18 @@ func (d *Dispatcher) Stop() {
 	}
 }
 
+func (d *Dispatcher) Receive(ctx context.Context, domain universal.Domain, auth connector.AuthMethod) (protocol.Receiver, error) {
+	var key receiverKey
+	key.domain = domain
+	copy(key.address[:], d.address)
+
+	// HACK: always use the last request ID for now
+	var requestId = make([]byte, len(d.lastRequestId))
+	copy(requestId[:], d.lastRequestId)
+	resp := d.createHandler(&key, requestId)
+	return resp, nil
+}
+
 // Send a message to a vehicle.
 func (d *Dispatcher) Send(ctx context.Context, message *universal.RoutableMessage, auth connector.AuthMethod) (protocol.Receiver, error) {
 	d.doneLock.Lock()
@@ -415,7 +429,13 @@ func (d *Dispatcher) Send(ctx context.Context, message *universal.RoutableMessag
 		}
 	}
 
-	resp := d.createHandler(&key, authentication.RequestID(message))
+	requestID := authentication.RequestID(message)
+	resp := d.createHandler(&key, requestID)
+
+	// HACK: copy request ID for decoding received messages
+	d.lastRequestId = make([]byte, len(requestID))
+	copy(d.lastRequestId[:], requestID)
+
 	encodedMessage, err := proto.Marshal(message)
 	if err != nil {
 		return nil, err
