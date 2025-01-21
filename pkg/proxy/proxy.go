@@ -16,7 +16,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/gorilla/websocket"
 
 	"github.com/teslamotors/vehicle-command/internal/authentication"
 	"github.com/teslamotors/vehicle-command/internal/log"
@@ -66,6 +68,8 @@ type Proxy struct {
 	unsupported      sync.Map
 	domainForSubject sync.Map
 	mode             string
+
+	upgrader websocket.Upgrader
 }
 
 func (p *Proxy) updateDomainForSubject(subject, domain string) {
@@ -128,6 +132,7 @@ func New(ctx context.Context, skey protocol.ECDHPrivateKey, cacheSize int, mode 
 		commandKey: skey,
 		sessions:   cache.New(cacheSize),
 		mode:       mode,
+		upgrader:   websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
 	}, nil
 }
 
@@ -335,7 +340,10 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				writeJSONError(w, http.StatusNotFound, errors.New("expected 17-character VIN in path (do not user Fleet API ID)"))
 				return
 			}
-			if p.isNotSupported(vin) {
+			if command == "stream" {
+				p.handleStreamSocket(acct, w, req, vin)
+				return
+			} else if p.isNotSupported(vin) {
 				p.forwardRequest(acct, w, req)
 				if acct.Host != p.fetchDomainForSubject(acct.Subject) {
 					p.updateDomainForSubject(acct.Subject, acct.Host)
@@ -353,6 +361,98 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	p.forwardRequest(acct, w, req)
+}
+
+type websocketMessage struct {
+	messageType int
+	message     []byte
+}
+
+type streamMessage struct {
+	Type      string                 `json:"type"`
+	ID        string                 `json:"id"`
+	InnerJSON map[string]interface{} `json:"content"`
+}
+
+func (p *Proxy) handleStreamSocket(acct *account.Account, w http.ResponseWriter, req *http.Request, vin string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	ws, err := p.upgrader.Upgrade(w, req, nil)
+	if err != nil {
+		log.Error("Error upgrading websocket: %s", err)
+	}
+	defer ws.Close()
+
+	car, err := acct.GetVehicleHermes(ctx, vin, p.commandKey, p.sessions)
+	if err != nil {
+		log.Error("Error getting vehicle: %s", err)
+		return
+	}
+
+	if err := car.Connect(ctx); err != nil {
+		log.Error("Error connecting to vehicle: %s", err)
+		return
+	}
+	defer car.Disconnect()
+
+	if err := car.StartSession(ctx, nil); err != nil {
+		log.Error("Error starting session: %s", err)
+		return
+	}
+	defer car.UpdateCachedSessions(p.sessions)
+
+	sessionId := uuid.New()
+	sessionIdStr := sessionId.String()
+	err = car.CreateStreamSession(ctx, sessionIdStr)
+	if err != nil {
+		log.Error("Error creating stream session: %s", err)
+		return
+	}
+
+	ctx, cancel = context.WithCancel(context.Background())
+	defer cancel()
+	response, err := car.WatchServerResponses(ctx)
+	if err != nil {
+		log.Error("Error watching server responses: %s", err)
+		return
+	}
+
+	websocketMessages := make(chan websocketMessage)
+	go func() {
+		defer close(websocketMessages)
+		for {
+			messageType, message, err := ws.ReadMessage()
+			if err != nil {
+				log.Error("Error reading message from websocket: %s", err)
+				return
+			}
+			websocketMessages <- websocketMessage{messageType, message}
+		}
+	}()
+
+	for {
+		select {
+		case resp, ok := <-response:
+			if !ok {
+				log.Info("Server response channel closed")
+				return
+			}
+			msg := resp.GetStreamMessage()
+
+			err = ws.WriteMessage(1, []byte(msg.Data))
+			if err != nil {
+				log.Error("Error writing message to websocket: %s", err)
+				return
+			}
+		case message, ok := <-websocketMessages:
+			if !ok {
+				log.Info("Websocket closed")
+				return
+			}
+			car.SendStreamMessage(ctx, sessionIdStr, string(message.message))
+		}
+	}
 }
 
 func (p *Proxy) handleFleetTelemetryConfig(acct *account.Account, w http.ResponseWriter, req *http.Request) {
