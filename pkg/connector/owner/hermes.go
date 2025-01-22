@@ -34,6 +34,8 @@ type Connection struct {
 	errChan      chan error
 	wakeLock     sync.Mutex
 	lastPoke     time.Time
+
+	streamingConfig string
 }
 
 // AllowedLatency implements connector.Connector.
@@ -107,7 +109,8 @@ func (c *Connection) newMessage(buffer []byte) error {
 	}
 
 	// Put only command response payloads into the inbox
-	if message.GetCommandMessage().GetCommandType() == *hermes.CommandType_COMMAND_TYPE_SIGNED_COMMAND_RESPONSE.Enum() {
+	commandType := message.GetCommandMessage().GetCommandType()
+	if commandType == *hermes.CommandType_COMMAND_TYPE_SIGNED_COMMAND_RESPONSE.Enum() {
 
 		decoded := &universalmessage.RoutableMessage{}
 		if err := proto.Unmarshal(payload, decoded); err != nil {
@@ -120,6 +123,9 @@ func (c *Connection) newMessage(buffer []byte) error {
 		default:
 			return fmt.Errorf("dropped response due to full inbox")
 		}
+	} else if commandType == *hermes.CommandType_COMMAND_TYPE_STREAMING_CONFIG.Enum() {
+		// Store the streaming config
+		c.streamingConfig = string(payload)
 	}
 	// ACK every message
 	err = c.sendAck(message)
@@ -202,6 +208,10 @@ func statusCodeOK(code hermes.StatusCode) bool {
 
 func (c *Connection) VIN() string {
 	return c.vin
+}
+
+func (c *Connection) StreamingConfig() string {
+	return c.streamingConfig
 }
 
 func (c *Connection) Send(ctx context.Context, buffer []byte) error {

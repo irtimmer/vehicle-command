@@ -25,6 +25,7 @@ import (
 	"github.com/teslamotors/vehicle-command/pkg/account"
 	"github.com/teslamotors/vehicle-command/pkg/cache"
 	"github.com/teslamotors/vehicle-command/pkg/connector/inet"
+	"github.com/teslamotors/vehicle-command/pkg/connector/owner"
 	"github.com/teslamotors/vehicle-command/pkg/protocol"
 	"github.com/teslamotors/vehicle-command/pkg/vehicle"
 )
@@ -409,6 +410,10 @@ func (p *Proxy) handleStreamSocket(acct *account.Account, w http.ResponseWriter,
 		log.Error("Error creating stream session: %s", err)
 		return
 	}
+
+	// Cast a Connection to a HermesConnection to access the streaming configuration
+	hermesConn := car.Connection().(*owner.Connection)
+	ws.WriteMessage(1, []byte(hermesConn.StreamingConfig()))
 
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()

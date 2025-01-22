@@ -281,3 +281,7 @@ func (v *Vehicle) LoadCachedSessions(c *cache.SessionCache) error {
 	}
 	return errors.New("VIN not in cache")
 }
+
+func (v *Vehicle) Connection() connector.Connector {
+	return v.conn
+}

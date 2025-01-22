@@ -70,3 +70,8 @@ type FleetAPIConnector interface {
 	SendFleetAPICommand(ctx context.Context, endpoint string, command interface{}) ([]byte, error)
 	Wakeup(ctx context.Context) error
 }
+
+type HermesConnector interface {
+	Connector
+	StreamingConfig() string
+}
